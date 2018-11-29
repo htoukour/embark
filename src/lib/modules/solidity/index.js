@@ -91,8 +91,7 @@ class Solidity {
           sources: codeInputs,
           settings: {
             optimizer: {
-              enabled: (!options.disableOptimizations && self.options.optimize),
-              runs: self.options["optimize-runs"]
+              enabled: false
             },
             outputSelection: {
               '*': {

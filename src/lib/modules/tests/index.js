@@ -61,21 +61,22 @@ class TestRunner {
         }
 
         global.embark.events.emit('tests:finished', function() {
-          runCmd(`${fs.embarkPath('node_modules/.bin/istanbul')} report --root .embark --format html`,
-            {silent: false, exitOnError: false}, (err) => {
-              if (err) {
-                return next(err);
-              }
-              console.info(`Coverage report created. You can find it here: ${fs.dappPath('coverage/__root__/index.html')}\n`);
-              const opn = require('opn');
-              const _next = () => { next(null, results); };
-              if (options.noBrowser) {
-                return next(null, results);
-              }
-              opn(fs.dappPath('coverage/__root__/index.html'), {wait: false})
-                .then(() => new Promise(resolve => setTimeout(resolve, 1000)))
-                .then(_next, _next);
-            });
+          next(null, results);
+          // runCmd(`${fs.embarkPath('node_modules/.bin/istanbul')} report --root coverage --format html`,
+          //   {silent: false, exitOnError: false}, (err) => {
+          //     if (err) {
+          //       return next(err);
+          //     }
+          //     console.info(`Coverage report created. You can find it here: ${fs.dappPath('coverage/__root__/index.html')}\n`);
+          //     const opn = require('opn');
+          //     const _next = () => { next(null, results); };
+          //     if (options.noBrowser) {
+          //       return next(null, results);
+          //     }
+          //     opn(fs.dappPath('coverage/__root__/index.html'), {wait: false})
+          //       .then(() => new Promise(resolve => setTimeout(resolve, 1000)))
+          //       .then(_next, _next);
+          //   });
         });
       }
     ], (err, results) => {

@@ -1,3 +1,5 @@
+import { Web3ProviderEngine, GanacheSubprovider } from '@0x/subproviders';
+
 const Web3 = require('web3');
 const async = require('async');
 const Provider = require('./provider.js');
@@ -106,38 +108,15 @@ class BlockchainConnector {
       self.provider = sim.provider(self.config.contractsConfig.deployment);
 
       if (coverage) {
-        // Here we patch the sendAsync method on the provider. The goal behind this is to force pure/constant/view calls to become
-        // transactions, so that we can pull in execution traces and account for those executions in code coverage.
-        //
-        // Instead of a simple call, here's what happens:
-        //
-        // 1) A transaction is sent with the same payload, and a pre-defined gas price;
-        // 2) We wait for the transaction to be mined by asking for the receipt;
-        // 3) Once we get the receipt back, we dispatch the real call and pass the original callback;
-        //
-        // This will still allow tests to get the return value from the call and run contracts unmodified.
-        self.provider.realSendAsync = self.provider.sendAsync.bind(self.provider);
-        self.provider.sendAsync = function(payload, cb) {
-          if(payload.method !== 'eth_call') {
-            return self.provider.realSendAsync(payload, cb);
-          }
-          self.events.request('reporter:toggleGasListener');
-          let newParams = Object.assign({}, payload.params[0], {gasPrice: '0x77359400'});
-          let newPayload = {
-            id: payload.id + 1,
-            method: 'eth_sendTransaction',
-            params: [newParams],
-            jsonrpc: payload.jsonrpc
-          };
-
-          self.provider.realSendAsync(newPayload, (_err, response) => {
-            let txHash = response.result;
-            self.web3.eth.getTransactionReceipt(txHash, (_err, _res) => {
-              self.events.request('reporter:toggleGasListener');
-              self.provider.realSendAsync(payload, cb);
-            });
-          });
-        };
+        self.provider = new Web3ProviderEngine();
+        return self.events.request("coverage:subprovider", self.provider, (coverageSubprovider) => {
+          self.provider.addProvider(coverageSubprovider);
+          self.provider.addProvider(new GanacheSubprovider(self.config.contractsConfig.deployment));
+          self.web3.setProvider(self.provider);
+          self.provider.start();
+          self._emitWeb3Ready();
+          cb();
+        });
       }
 
       self.web3.setProvider(self.provider);

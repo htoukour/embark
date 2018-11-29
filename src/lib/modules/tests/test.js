@@ -177,15 +177,6 @@ class Test {
     self.ready = false;
 
     async.waterfall([
-      function checkDeploymentOpts(next) {
-        self.checkDeploymentOptions(options, next);
-      },
-      function changeGlobalWeb3(next) {
-        self.events.request('blockchain:get', (web3) => {
-          global.web3 = web3;
-          next();
-        });
-      },
       function compileContracts(next) {
         if (!self.firstDeployment) {
           return next();
@@ -194,6 +185,15 @@ class Test {
         self.events.request("contracts:build", false, (err) => {
           self.firstDeployment = false;
           next(err);
+        });
+      },
+      function checkDeploymentOpts(next) {
+        self.checkDeploymentOptions(options, next);
+      },
+      function changeGlobalWeb3(next) {
+        self.events.request('blockchain:get', (web3) => {
+          global.web3 = web3;
+          next();
         });
       },
       function resetContracts(next) {

@@ -112,8 +112,8 @@ class Provider {
             }
             cb(null, result);
           });
-        } else if (payload.method === 'eth_sendRawTransaction') {
-          return self.runTransaction.push({payload}, cb);
+        // } else if (payload.method === 'eth_sendRawTransaction') {
+          // return self.runTransaction.push({payload}, cb);
         }
 
         realSend(payload, cb);
