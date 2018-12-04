@@ -38,6 +38,10 @@ function mkdirp() {
   return restrictPath(fs.mkdirp, fs.mkdirp, 1, arguments);
 }
 
+function mkdtempSync() {
+  return restrictPath(fs.mkdtempSync, fs.mkdtempSync, 1, arguments);
+}
+
 function readdir() {
   return restrictPath(fs.readdir, fs.readdir, 1, arguments);
 }
@@ -197,6 +201,7 @@ module.exports = {
   ensureFileSync,
   mkdirp,
   mkdirpSync,
+  mkdtempSync,
   move,
   moveSync,
   outputFileSync,

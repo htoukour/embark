@@ -1,15 +1,29 @@
 const fs = require('./fs.js');
 const ipc = require('node-ipc');
+const os = require('os');
 const {parse, stringify} = require('flatted/cjs');
+const utils = require('../utils/utils');
 
 class IPC {
 
   constructor(options) {
     this.logger = options.logger;
-    this.socketPath = options.socketPath || fs.dappPath(".embark/embark.ipc");
+    this.socketPath = options.socketPath || IPC.provisionPath();
     this.ipcRole = options.ipcRole;
     ipc.config.silent = true;
     this.connected = false;
+  }
+
+  static provisionPath() {
+    const ipcPointerPath = fs.dappPath('.embark/embark.ipc.pointer');
+    if (fs.existsSync(ipcPointerPath)) {
+      return fs.readFileSync(ipcPointerPath).toString().trim();
+    } else {
+      const ipcPath = utils.joinPath(fs.mkdtempSync(os.tmpdir()), 'embark.ipc');
+      fs.mkdirpSync(fs.dappPath('.embark'));
+      fs.writeFileSync(ipcPointerPath, ipcPath);
+      return ipcPath;
+    }
   }
 
   connect(done) {
@@ -39,7 +53,6 @@ class IPC {
   }
 
   serve() {
-    fs.mkdirpSync(fs.dappPath(".embark"));
     ipc.serve(this.socketPath, () => {});
     ipc.server.start();
 
