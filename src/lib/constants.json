@@ -50,7 +50,7 @@
     "initiated": "initiated"
   },
   "tests": {
-    "gasLimit": 6000000
+    "gasLimit": 4503599627370495
   },
   "codeGenerator": {
     "gasLimit": 6000000
