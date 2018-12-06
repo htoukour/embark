@@ -89,45 +89,107 @@ function getJson(url, cb) {
   httpGetJson(url, cb);
 }
 
-function pingEndpoint(host, port, type, protocol, origin, callback) {
-  const options = {
-    protocolVersion: 13,
-    perMessageDeflate: true,
-    origin: origin,
-    host: host,
-    port: port
-  };
-  if (type === 'ws') {
-    options.headers = {
-      'Sec-WebSocket-Version': 13,
-      Connection: 'Upgrade',
-      Upgrade: 'websocket',
-      'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
-      Origin: origin
-    };
-  }
-  let req;
+function pingEndpoint(host, port, type, protocol, origin, callback, count = 0) {
   // remove trailing api key from infura, ie rinkeby.infura.io/nmY8WtT4QfEwz2S7wTbl
-  if (options.host.indexOf('/') > -1) {
-    options.host = options.host.split('/')[0];
-  }
-  if (protocol === 'https') {
-    req = require('https').get(options);
+  const _host = host.indexOf('/') > -1 ? host.split('/')[0] : host;
+  const max_retries = 4800;
+  const timeout = 125;
+
+  let alreadyClosed = false;
+  let retrying = false;
+
+  const doCallback = (v) => {
+    if (typeof v !== 'undefined') {
+      callback._doCallback = !!v;
+    }
+    let _doCallback = callback._doCallback;
+    if (typeof _doCallback === 'undefined') {
+      _doCallback = true;
+    } else {
+      _doCallback = !!_doCallback;
+    }
+    return _doCallback;
+  };
+
+  const cleanup = (req, closeMethod) => {
+    if (!alreadyClosed) {
+      alreadyClosed = true;
+      setImmediate(() => { req[closeMethod](); });
+    }
+  };
+
+  const maybeRetry = (req, closeMethod, cond, ...args) => {
+    cleanup(req, closeMethod);
+    if (doCallback()) {
+      if (cond) {
+        retrying = true;
+        setImmediate(() => {
+          pingEndpoint(host, port, type, protocol, origin, callback, ++count);
+        });
+      } else {
+        doCallback(false);
+        callback(...args);
+      }
+    }
+  };
+
+  const handleError = (req, closeMethod) => {
+    req.on('error', (err) => {
+      if (!retrying) {
+        maybeRetry(
+          req,
+          closeMethod,
+          (/timed out/).test(err.message) && count < max_retries,
+          err
+        );
+      } else {
+        cleanup(req, closeMethod);
+      }
+    });
+  };
+
+  const handleSuccess = (req, closeMethod, event) => {
+    req.once(event, () => { maybeRetry(req, closeMethod, false); });
+  };
+
+  const setupTimer = (req, closeMethod) => {
+    setTimeout(() => {
+      if (!retrying) {
+        maybeRetry(
+          req,
+          closeMethod,
+          count < max_retries,
+          new Error('timed out')
+        );
+      }
+    }, timeout * 2);
+  };
+
+  const handleRequest = (req, closeMethod, event) => {
+    handleError(req, closeMethod);
+    handleSuccess(req, closeMethod, event);
+    setupTimer(req, closeMethod);
+  };
+
+  if (type === 'ws') {
+    const req = new (require('ws'))(
+      `${protocol === 'https' ? 'wss' : 'ws'}://${_host}:${port}/`,
+      {handshakeTimeout: timeout, origin}
+    );
+    handleRequest(req, 'close', 'open');
   } else {
-    req = require('http').get(options);
+    const req = (protocol === 'https' ? require('https') : require('http')).get(
+      {host: _host, origin, port, timeout}
+    );
+    handleRequest(req, 'abort', 'response');
+    req.once('socket', (sock) => {
+      sock.once('connect', () => {
+        req.once('timeout', () => {
+          req.emit('error', new Error('timed out'));
+        });
+      });
+    });
   }
-
-  req.on('error', (err) => {
-    callback(err);
-  });
-
-  req.on('response', (_response) => {
-    callback();
-  });
-
-  req.on('upgrade', (_res, _socket, _head) => {
-    callback();
-  });
 }
 
 function runCmd(cmd, options, callback) {
@@ -554,7 +616,7 @@ function isNotFolder(node){
 }
 
 function byName(a, b) {
-    return a.name.localeCompare(b.name);
+  return a.name.localeCompare(b.name);
 }
 
 function fileTreeSort(nodes){
