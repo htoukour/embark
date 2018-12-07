@@ -6,6 +6,10 @@ const {canonicalHost, defaultHost} = require('../../utils/host');
 const constants = require('../../constants.json');
 const express = require('express');
 const {parser: jsonParser} = require('stream-json');
+// const wsIncoming = require('../../../../node_modules/http-proxy/lib/http-proxy/passes/ws-incoming');
+// const proxyHttp = require.resolve('http-proxy', {paths: ['./node_modules/http-proxy-middleware/node_modules']});
+// console.log(wsIncoming);
+require('./httpProxyOverride');
 const proxyMiddleware = require('http-proxy-middleware');
 const pump = require('pump');
 const utils = require('../../utils/utils');
@@ -16,7 +20,6 @@ const hex = (n) => {
   let _n = n.toString(16);
   return _n.length === 1 ? '0' + _n : _n;
 };
-const toModifyPayloads = {};
 
 const parseJsonMaybe = (string) => {
   let object;
@@ -43,6 +46,7 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
   const commList = {};
   const receipts = {};
   const transactions = {};
+  const toModifyPayloads = {};
 
   const trackRequest = (req) => {
     if (!req) return;
@@ -137,31 +141,53 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
       );
     },
     createWsServerTransformStream: function(_req, _proxyReq, _proxyRes) {
+      const recv = new WebSocket.Receiver();
+      // recv.on('message', (data) => {
+      //   const object = parseJsonMaybe(data);
+      //   console.log(object);
+      // });
+      // pump(cloneable(_proxyRes), recv);
+      let cb;
+      recv.on('message', (data) => {
+        cb(null, Buffer.from(data));
+      });
       return new Transform({
         transform(chunk, encoding, callback) {
-          try {
+          cb = callback;
+          recv.write(chunk);
 
-            const index = chunk.indexOf("{");
-            const data = JSON.parse(chunk.toString('utf8').substr(index));
-            if (toModifyPayloads[data.id]) {
-              const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
-              console.log('Modify this', chunk2);
-              const newAccounts = data.result.concat(accounts);
-              console.log(newAccounts);
-              data.result = newAccounts;
-              // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-              chunk = JSON.stringify(data);
-              // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-              delete toModifyPayloads[data.id];
-              // this.push(Buffer.from(chunk2, 'utf8'));
-              // return callback(null, Buffer.from(chunk2, 'utf8'));
-            }
-          } catch (e) {
-            console.log('e');
-            // console.trace(e);
-          }
-          this.push(chunk);
-          callback();
+
+          // const chunkString = chunk.toString();
+          // try {
+          //   const index = chunkString.indexOf("{");
+          //   const data = JSON.parse(chunkString.toString('utf8').substr(index));
+          //   if (toModifyPayloads[data.id]) {
+          //     console.error('Accounts', chunkString);
+          //     data.result = data.result.concat(accounts);
+          //     chunk = JSON.stringify(data);
+          //     return callback(null, chunk);
+          //   }
+          //   // if (toModifyPayloads[data.id]) {
+          //   //   const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
+          //   //   console.log('Modify this', chunk2);
+          //   //   const newAccounts = data.result.concat(accounts);
+          //   //   console.log(newAccounts);
+          //   //   data.result = newAccounts;
+          //   //   // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+          //   //   chunk = JSON.stringify(data);
+          //   //   // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+          //   //   delete toModifyPayloads[data.id];
+          //   //   // this.push(Buffer.from(chunk2, 'utf8'));
+          //   //   // return callback(null, Buffer.from(chunk2, 'utf8'));
+          //   // }
+          // } catch (e) {
+          //   console.error('error:', chunkString);
+          //   // console.trace(e);
+          // }
+
+
+          // this.push(chunk);
+          // callback();
         }
       });
     },
