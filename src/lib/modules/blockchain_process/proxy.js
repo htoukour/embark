@@ -1,6 +1,7 @@
 /* global Buffer __ exports require */
 
 const Asm = require('stream-json/Assembler');
+const {Duplex} = require('stream');
 const {canonicalHost, defaultHost} = require('../../utils/host');
 const {chain}  = require('stream-chain');
 const cloneable = require('cloneable-readable');
@@ -133,6 +134,19 @@ exports.serve = async (ipc, host, port, ws, origin) => {
         err.message
       );
     },
+    createWsServerTransformStream: function(req, proxyReq, proxyRes) {
+
+      const inoutStream = new Duplex({
+        write(chunk, encoding, callback) {
+          const patate = (chunk.toString());
+          callback();
+        },
+        read() {
+          //please tell me what to do
+        }
+      });
+      return inoutStream;
+    }
 
     onProxyReq(_proxyReq, req, _res) {
       if (req.method === 'POST') {
