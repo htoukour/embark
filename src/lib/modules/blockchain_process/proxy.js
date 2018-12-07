@@ -1,7 +1,7 @@
 /* global Buffer __ exports require */
 
 const Asm = require('stream-json/Assembler');
-const {Duplex} = require('stream');
+const {Transform} = require('stream');
 const {canonicalHost, defaultHost} = require('../../utils/host');
 const constants = require('../../constants.json');
 const express = require('express');
@@ -11,10 +11,12 @@ const pump = require('pump');
 const utils = require('../../utils/utils');
 const WsParser = require('simples/lib/parsers/ws');
 
+const METHODS_TO_MODIFY = {accounts: 'eth_accounts'};
 const hex = (n) => {
   let _n = n.toString(16);
   return _n.length === 1 ? '0' + _n : _n;
 };
+const toModifyPayloads = {};
 
 const parseJsonMaybe = (string) => {
   let object;
@@ -37,7 +39,7 @@ const parseJsonMaybe = (string) => {
   return object;
 };
 
-exports.serve = async (ipc, host, port, ws, origin) => {
+exports.serve = async (ipc, host, port, ws, origin, accounts) => {
   const commList = {};
   const receipts = {};
   const transactions = {};
@@ -45,6 +47,9 @@ exports.serve = async (ipc, host, port, ws, origin) => {
   const trackRequest = (req) => {
     if (!req) return;
     try {
+      if (Object.values(METHODS_TO_MODIFY).includes(req.method)) {
+        toModifyPayloads[req.id] = req.method;
+      }
       if (req.method === 'eth_sendTransaction') {
         commList[req.id] = {
           type: 'contract-log',
@@ -131,19 +136,35 @@ exports.serve = async (ipc, host, port, ws, origin) => {
         err.message
       );
     },
-    createWsServerTransformStream: function(req, proxyReq, proxyRes) {
+    createWsServerTransformStream: function(_req, _proxyReq, _proxyRes) {
+      return new Transform({
+        transform(chunk, encoding, callback) {
+          try {
 
-      const inoutStream = new Duplex({
-        write(chunk, encoding, callback) {
-          const patate = (chunk.toString());
+            const index = chunk.indexOf("{");
+            const data = JSON.parse(chunk.toString('utf8').substr(index));
+            if (toModifyPayloads[data.id]) {
+              const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
+              console.log('Modify this', chunk2);
+              const newAccounts = data.result.concat(accounts);
+              console.log(newAccounts);
+              data.result = newAccounts;
+              // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+              chunk = JSON.stringify(data);
+              // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+              delete toModifyPayloads[data.id];
+              // this.push(Buffer.from(chunk2, 'utf8'));
+              // return callback(null, Buffer.from(chunk2, 'utf8'));
+            }
+          } catch (e) {
+            console.log('e');
+            // console.trace(e);
+          }
+          this.push(chunk);
           callback();
-        },
-        read() {
-          //please tell me what to do
         }
       });
-      return inoutStream;
-    }
+    },
 
     onProxyReq(_proxyReq, req, _res) {
       if (req.method === 'POST') {

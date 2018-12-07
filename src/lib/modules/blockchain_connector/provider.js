@@ -46,14 +46,16 @@ class Provider {
     // The best choice is to use void origin, BUT Geth rejects void origin, so to keep both clients happy we can use http://embark
       self.provider = new this.web3.providers.WebsocketProvider(self.web3Endpoint, {headers: {Origin: constants.embarkResourceOrigin}});
 
-      self.provider.on('error', () => self.logger.error('Websocket Error'));
-      self.provider.on('end', () => self.logger.error('Websocket connection ended'));
+      self.provider.on('error', (e) => self.logger.error('Websocket Error', JSON.stringify(e)));
+      self.provider.on('end', (e) => self.logger.error('Websocket connection ended', JSON.stringify(e)));
     } else {
       return callback(__("contracts config error: unknown deployment type %s", this.type));
     }
     self.web3.setProvider(self.provider);
 
+    console.log('GETTING ACCOUNTS');
     self.web3.eth.getAccounts((err, accounts = []) => {
+      console.log('GOT ACCOUNTS', err, accounts);
       if (err) {
         self.logger.warn('Error while getting the node\'s accounts.', err.message || err);
       }
