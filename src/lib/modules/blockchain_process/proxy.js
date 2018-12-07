@@ -1,14 +1,11 @@
 /* global Buffer __ exports require */
 
 const Asm = require('stream-json/Assembler');
-const {Transform} = require('stream');
+const {Duplex, PassThrough} = require('stream');
 const {canonicalHost, defaultHost} = require('../../utils/host');
 const constants = require('../../constants.json');
 const express = require('express');
 const {parser: jsonParser} = require('stream-json');
-// const wsIncoming = require('../../../../node_modules/http-proxy/lib/http-proxy/passes/ws-incoming');
-// const proxyHttp = require.resolve('http-proxy', {paths: ['./node_modules/http-proxy-middleware/node_modules']});
-// console.log(wsIncoming);
 require('./httpProxyOverride');
 const proxyMiddleware = require('http-proxy-middleware');
 const pump = require('pump');
@@ -16,6 +13,7 @@ const utils = require('../../utils/utils');
 const WsParser = require('simples/lib/parsers/ws');
 
 const METHODS_TO_MODIFY = {accounts: 'eth_accounts'};
+
 const hex = (n) => {
   let _n = n.toString(16);
   return _n.length === 1 ? '0' + _n : _n;
@@ -50,6 +48,7 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
 
   const trackRequest = (req) => {
     if (!req) return;
+    console.error(`reQUEST '${JSON.stringify(req)}'`);
     try {
       if (Object.values(METHODS_TO_MODIFY).includes(req.method)) {
         toModifyPayloads[req.id] = req.method;
@@ -75,6 +74,7 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
 
   const trackResponse = (res) => {
     if (!res) return;
+    console.error(`reSPONSE '${JSON.stringify(res)}'`);
     try {
       if (commList[res.id]) {
         commList[res.id].transactionHash = res.result;
@@ -140,56 +140,70 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
         err.message
       );
     },
+
     createWsServerTransformStream: function(_req, _proxyReq, _proxyRes) {
+      const sock = new PassThrough();
+      const sndr = new WebSocket.Sender(sock, {});
       const recv = new WebSocket.Receiver();
-      // recv.on('message', (data) => {
-      //   const object = parseJsonMaybe(data);
-      //   console.log(object);
-      // });
-      // pump(cloneable(_proxyRes), recv);
-      let cb;
       recv.on('message', (data) => {
-        cb(null, Buffer.from(data));
+        // modify data here
+        const _data = parseJsonMaybe(data);
+        // _data.foo = 'bar';
+        sndr.send(JSON.stringify(_data), {}, function() {});
       });
-      return new Transform({
-        transform(chunk, encoding, callback) {
-          cb = callback;
+      const dupl = new Duplex({
+        read(size) {
+          const data = sock.read(size);
+          if (data !== null) {
+            this.push(data);
+          } else {
+            sock.once('data', (data) => {
+              this.push(data);
+            });
+          }
+        },
+        write(chunk, encoding, callback) {
           recv.write(chunk);
-
-
-          // const chunkString = chunk.toString();
-          // try {
-          //   const index = chunkString.indexOf("{");
-          //   const data = JSON.parse(chunkString.toString('utf8').substr(index));
-          //   if (toModifyPayloads[data.id]) {
-          //     console.error('Accounts', chunkString);
-          //     data.result = data.result.concat(accounts);
-          //     chunk = JSON.stringify(data);
-          //     return callback(null, chunk);
-          //   }
-          //   // if (toModifyPayloads[data.id]) {
-          //   //   const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
-          //   //   console.log('Modify this', chunk2);
-          //   //   const newAccounts = data.result.concat(accounts);
-          //   //   console.log(newAccounts);
-          //   //   data.result = newAccounts;
-          //   //   // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-          //   //   chunk = JSON.stringify(data);
-          //   //   // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-          //   //   delete toModifyPayloads[data.id];
-          //   //   // this.push(Buffer.from(chunk2, 'utf8'));
-          //   //   // return callback(null, Buffer.from(chunk2, 'utf8'));
-          //   // }
-          // } catch (e) {
-          //   console.error('error:', chunkString);
-          //   // console.trace(e);
-          // }
-
-
-          // this.push(chunk);
-          // callback();
+          callback();
         }
       });
+      return dupl;
+
+      // return new Transform({
+      //   transform(chunk, encoding, callback) {
+      //     cb = callback;
+      //     recv.write(chunk);
+      //     // const chunkString = chunk.toString();
+      //     // try {
+      //     //   const index = chunkString.indexOf("{");
+      //     //   const data = JSON.parse(chunkString.toString('utf8').substr(index));
+      //     //   if (toModifyPayloads[data.id]) {
+      //     //     console.error('Accounts', chunkString);
+      //     //     data.result = data.result.concat(accounts);
+      //     //     chunk = JSON.stringify(data);
+      //     //     return callback(null, chunk);
+      //     //   }
+      //     //   // if (toModifyPayloads[data.id]) {
+      //     //   //   const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
+      //     //   //   console.log('Modify this', chunk2);
+      //     //   //   const newAccounts = data.result.concat(accounts);
+      //     //   //   console.log(newAccounts);
+      //     //   //   data.result = newAccounts;
+      //     //   //   // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+      //     //   //   chunk = JSON.stringify(data);
+      //     //   //   // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
+      //     //   //   delete toModifyPayloads[data.id];
+      //     //   //   // this.push(Buffer.from(chunk2, 'utf8'));
+      //     //   //   // return callback(null, Buffer.from(chunk2, 'utf8'));
+      //     //   // }
+      //     // } catch (e) {
+      //     //   console.error('error:', chunkString);
+      //     //   // console.trace(e);
+      //     // }
+      //     // this.push(chunk);
+      //     // callback();
+      //   }
+      // });
     },
 
     onProxyReq(_proxyReq, req, _res) {
