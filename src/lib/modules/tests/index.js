@@ -163,10 +163,11 @@ class TestRunner {
         let fns = files.map((file) => {
           return (cb) => {
             const mocha = new Mocha();
+            const gasLimit = options.coverage ? constants.tests.coverageGasLimit : constants.tests.gasLimit;
             mocha.reporter(EmbarkSpec, {
               events: self.events,
               gasDetails: options.gasDetails,
-              gasLimit: constants.tests.gasLimit
+              gasLimit
             });
 
             mocha.addFile(file);
