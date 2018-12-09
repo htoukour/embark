@@ -1,9 +1,9 @@
 /* global Buffer __ exports require */
 
 const Asm = require('stream-json/Assembler');
-const {Duplex, PassThrough} = require('stream');
 const {canonicalHost, defaultHost} = require('../../utils/host');
 const constants = require('../../constants.json');
+const {Duplex} = require('stream');
 const express = require('express');
 const {parser: jsonParser} = require('stream-json');
 require('./httpProxyOverride');
@@ -11,6 +11,7 @@ const proxyMiddleware = require('http-proxy-middleware');
 const pump = require('pump');
 const utils = require('../../utils/utils');
 const WsParser = require('simples/lib/parsers/ws');
+const WsWrapper = require('simples/lib/ws/wrapper');
 
 const METHODS_TO_MODIFY = {accounts: 'eth_accounts'};
 
@@ -142,28 +143,29 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
     },
 
     createWsServerTransformStream: function(_req, _proxyReq, _proxyRes) {
-      const sock = new PassThrough();
-      const sndr = new WebSocket.Sender(sock, {});
-      const recv = new WebSocket.Receiver();
-      recv.on('message', (data) => {
-        // modify data here
-        const _data = parseJsonMaybe(data);
-        // _data.foo = 'bar';
-        sndr.send(JSON.stringify(_data), {}, function() {});
+      const parser = new WsParser(0, true);
+      parser.on('frame', ({data: buffer}) => {
+        const object = parseJsonMaybe(buffer.toString());
+        if (object) {
+          // modify the response
+          object.foo = 'bar';
+
+          // track the modified response
+          trackResponse(object);
+
+          // send the modified response
+          WsWrapper.wrap(
+            {connection: dupl, masked: 0},
+            Buffer.from(JSON.stringify(object)),
+            () => {}
+          );
+        }
       });
       const dupl = new Duplex({
-        read(size) {
-          const data = sock.read(size);
-          if (data !== null) {
-            this.push(data);
-          } else {
-            sock.once('data', (data) => {
-              this.push(data);
-            });
-          }
-        },
+        read(_size) {},
+
         write(chunk, encoding, callback) {
-          recv.write(chunk);
+          parser.write(chunk);
           callback();
         }
       });
@@ -238,13 +240,13 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
       });
     };
 
-    proxyOpts.onOpen = (proxySocket) => {
-      // messages FROM the target
-      pump(proxySocket, new WsParser(0, true)).on('frame', ({data: buffer}) => {
-        const object = parseJsonMaybe(buffer.toString());
-        trackResponse(object);
-      });
-    };
+    // proxyOpts.onOpen = (proxySocket) => {
+    //   // messages FROM the target
+    //   pump(proxySocket, new WsParser(0, true)).on('frame', ({data: buffer}) => {
+    //     const object = parseJsonMaybe(buffer.toString());
+    //     trackResponse(object);
+    //   });
+    // };
   }
 
   const proxy = proxyMiddleware(proxyOpts);
