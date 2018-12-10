@@ -147,8 +147,10 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
       parser.on('frame', ({data: buffer}) => {
         const object = parseJsonMaybe(buffer.toString());
         if (object) {
-          // modify the response
-          object.foo = 'bar';
+          switch(toModifyPayloads[object.id]) {
+            case METHODS_TO_MODIFY.accounts: object.result = object.result.concat(accounts); break;
+            default:
+          }
 
           // track the modified response
           trackResponse(object);
