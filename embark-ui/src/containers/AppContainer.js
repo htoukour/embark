@@ -13,6 +13,7 @@ import {
   processes as processesAction,
   versions as versionsAction,
   plugins as pluginsAction,
+  listenToContracts as listenToContractsAction,
   changeTheme, fetchTheme
 } from '../actions';
 
@@ -76,6 +77,7 @@ class AppContainer extends Component {
       this.props.fetchProcesses();
       this.props.fetchServices();
       this.props.fetchPlugins();
+      this.props.listenToContracts();
     }
   }
 
@@ -137,7 +139,8 @@ AppContainer.propTypes = {
   theme: PropTypes.string,
   changeTheme: PropTypes.func,
   fetchTheme: PropTypes.func,
-  history: PropTypes.object
+  history: PropTypes.object,
+  listenToContracts: PropTypes.func
 };
 
 function mapStateToProps(state) {
@@ -160,6 +163,7 @@ export default withRouter(connect(
     fetchVersions: versionsAction.request,
     fetchPlugins: pluginsAction.request,
     changeTheme: changeTheme.request,
-    fetchTheme: fetchTheme.request
+    fetchTheme: fetchTheme.request,
+    listenToContracts: listenToContractsAction
   },
 )(AppContainer));
