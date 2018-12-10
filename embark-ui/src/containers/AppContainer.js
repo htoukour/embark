@@ -16,7 +16,6 @@ import {
   changeTheme, fetchTheme
 } from '../actions';
 
-
 import {LIGHT_THEME, DARK_THEME} from '../constants';
 
 import {

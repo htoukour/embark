@@ -6,24 +6,37 @@ const ERROR_OBJ = {error: __('Wrong authentication token. Get your token from th
 
 class Authenticator {
   constructor(embark, _options) {
-    this.authToken = uuid();
     this.embark = embark;
     this.logger = embark.logger;
     this.events = embark.events;
+
+    this.authToken = uuid();
+    this.emittedTokens = {};
 
     this.registerCalls();
     this.registerEvents();
   }
 
+  getRemoteAddress(req) {
+    return req.headers['x-forwarded-for'] ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress;
+  }
+
   generateRequestHash(req) {
-    let cnonce = req.headers['x-embark-cnonce'];
-    let hash = new keccak();
+    const remoteAddress = this.getRemoteAddress(req);
+    const cnonce = req.headers['x-embark-cnonce'];
+
+    // We fallback to the authToken in case of the firat authentication attempt.
+    const token = this.emittedTokens[remoteAddress] || this.authToken;
+
     let url = req.url;
-    let queryParamIndex = url.indexOf('?');
+    const queryParamIndex = url.indexOf('?');
     url = url.substring(0, queryParamIndex !== -1 ? queryParamIndex : url.length);
 
+    let hash = new keccak();
     hash.update(cnonce);
-    hash.update(this.authToken);
+    hash.update(token);
     hash.update(req.method);
     hash.update(url);
     return hash.digest('hex');
@@ -43,7 +56,16 @@ class Authenticator {
           this.logger.warn(__('- Referer: %s', req.headers.referer));
           return res.send(ERROR_OBJ);
         }
-        res.send({});
+
+        // Generate another authentication token.
+        self.authToken = uuid();
+        this.events.request('authenticator:displayUrl', false);
+
+        // Register token for this connection, and send it through.
+        const emittedToken = uuid();
+        const remoteAddress = self.getRemoteAddress(req);
+        this.emittedTokens[remoteAddress] = emittedToken;
+        res.send({token: emittedToken});
       }
     );
 
@@ -62,9 +84,14 @@ class Authenticator {
     let self = this;
 
     this.events.once('outputDone', () => {
+      this.events.request('authenticator:displayUrl', true);
+    });
+
+    this.events.setCommandHandler('authenticator:displayUrl', (firstOutput) => {
       const {port, host, enabled} = this.embark.config.webServerConfig;
 
       if (enabled) {
+        if(!firstOutput) this.logger.info(__('Previous token has now been used.'));
         this.logger.info(__('Access the web backend with the following url: %s',
           (`http://${host}:${port}/embark?token=${this.authToken}`.underline)));
       }
@@ -73,7 +100,10 @@ class Authenticator {
     this.events.setCommandHandler('authenticator:authorize', (req, res, cb) => {
       let authenticated = false;
       if(!res.send) {
-        authenticated = (this.authToken === req.protocol);
+        const remoteAddress = self.getRemoteAddress(req);
+        const authToken = this.emittedTokens[remoteAddress];
+
+        authenticated = authToken !== undefined && authToken === req.protocol;
       } else {
         let hash = self.generateRequestHash(req);
         authenticated = (hash === req.headers['x-embark-request-hash']);

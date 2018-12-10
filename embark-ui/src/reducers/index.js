@@ -217,6 +217,7 @@ function credentials(state = DEFAULT_CREDENTIALS_STATE, action) {
   }
 
   if (action.type === AUTHENTICATE[SUCCESS]) {
+    debugger;
     return {...state, ...{authenticated: true, authenticating: false, token: action.token, host: action.host, error: null}};
   }
 

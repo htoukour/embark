@@ -52,6 +52,10 @@ function destroy() {
   return request('delete', ...arguments);
 }
 
+function websocket(credentials, path) {
+  return new WebSocket(`ws://${credentials.host}/embark-api${path}`, [credentials.token]);
+}
+
 export function postCommand() {
   return post('/command', ...arguments);
 }
@@ -222,29 +226,29 @@ export function toggleBreakpoint(payload) {
 }
 
 export function listenToDebugger(credentials) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/debugger`, [credentials.token]);
+  return websocket(credentials, '/debugger');
 }
 
 export function listenToChannel(credentials, channel) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/communication/listenTo/${channel}`, [credentials.token]);
+  return websocket(credentials, `/communication/listenTo/${channel}`);
 }
 
 export function webSocketProcess(credentials, processName) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/process-logs/${processName}`, [credentials.token]);
+  return websocket(credentials, `/process-logs/${processName}`);
 }
 
 export function webSocketContractLogs(credentials) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/contracts/logs`, [credentials.token]);
+  return websocket(credentials, `/contracts/logs`);
 }
 
 export function webSocketContractEvents(credentials) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/blockchain/contracts/event`, [credentials.token]);
+  return websocket(credentials, `/blockchain/contracts/event`);
 }
 
 export function webSocketBlockHeader(credentials) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/blockchain/blockHeader`, [credentials.token]);
+  return websocket(credentials, `/blockchain/blockHeader`);
 }
 
 export function websocketGasOracle(credentials) {
-  return new WebSocket(`ws://${credentials.host}/embark-api/blockchain/gas/oracle`, [credentials.token]);
+  return websocket(credentials, `/blockchain/gas/oracle`);
 }
