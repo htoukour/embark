@@ -12,6 +12,7 @@ const pump = require('pump');
 const utils = require('../../utils/utils');
 const WsParser = require('simples/lib/parsers/ws');
 const WsWrapper = require('simples/lib/ws/wrapper');
+const modifyResponse = require('node-http-proxy-json');
 
 const METHODS_TO_MODIFY = {accounts: 'eth_accounts'};
 
@@ -142,7 +143,42 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
       );
     },
 
-    createWsServerTransformStream: function(_req, _proxyReq, _proxyRes) {
+    onProxyReq(_proxyReq, req, _res) {
+      if (req.method === 'POST') {
+        // messages TO the target
+        Asm.connectTo(
+          pump(req, jsonParser())
+        ).on('done', ({current: object}) => {
+          trackRequest(object);
+        });
+      }
+    },
+
+    onProxyRes(proxyRes, req, res) {
+      modifyResponse(res, proxyRes, (body) => {
+        if (body) {
+          switch (toModifyPayloads[body.id]) {
+            case METHODS_TO_MODIFY.accounts:
+              body.result = body.result.concat(accounts);
+              break;
+            default:
+          }
+          trackResponse(body);
+        }
+        return body;
+      });
+    }
+  };
+
+  if (ws) {
+    proxyOpts.onProxyReqWs = (_proxyReq, _req, socket, _options, _head) => {
+      // messages TO the target
+      pump(socket, new WsParser(0, false)).on('frame', ({data: buffer}) => {
+        const object = parseJsonMaybe(buffer.toString());
+        trackRequest(object);
+      });
+    };
+    proxyOpts.createWsServerTransformStream  = (_req, _proxyReq, _proxyRes) => {
       const parser = new WsParser(0, true);
       parser.on('frame', ({data: buffer}) => {
         const object = parseJsonMaybe(buffer.toString());
@@ -172,83 +208,7 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
         }
       });
       return dupl;
-
-      // return new Transform({
-      //   transform(chunk, encoding, callback) {
-      //     cb = callback;
-      //     recv.write(chunk);
-      //     // const chunkString = chunk.toString();
-      //     // try {
-      //     //   const index = chunkString.indexOf("{");
-      //     //   const data = JSON.parse(chunkString.toString('utf8').substr(index));
-      //     //   if (toModifyPayloads[data.id]) {
-      //     //     console.error('Accounts', chunkString);
-      //     //     data.result = data.result.concat(accounts);
-      //     //     chunk = JSON.stringify(data);
-      //     //     return callback(null, chunk);
-      //     //   }
-      //     //   // if (toModifyPayloads[data.id]) {
-      //     //   //   const chunk2 = chunk.toString('utf8').replace('0x00a329c0648769a73afac7f9381e08fb43dbea72', '0xb8d851486d1c953e31a44374aca11151d49b8bb3');
-      //     //   //   console.log('Modify this', chunk2);
-      //     //   //   const newAccounts = data.result.concat(accounts);
-      //     //   //   console.log(newAccounts);
-      //     //   //   data.result = newAccounts;
-      //     //   //   // const str = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-      //     //   //   chunk = JSON.stringify(data);
-      //     //   //   // chunk = chunk.toString('utf8').substr(0, index - 1) + JSON.stringify(data);
-      //     //   //   delete toModifyPayloads[data.id];
-      //     //   //   // this.push(Buffer.from(chunk2, 'utf8'));
-      //     //   //   // return callback(null, Buffer.from(chunk2, 'utf8'));
-      //     //   // }
-      //     // } catch (e) {
-      //     //   console.error('error:', chunkString);
-      //     //   // console.trace(e);
-      //     // }
-      //     // this.push(chunk);
-      //     // callback();
-      //   }
-      // });
-    },
-
-    onProxyReq(_proxyReq, req, _res) {
-      if (req.method === 'POST') {
-        // messages TO the target
-        Asm.connectTo(
-          pump(req, jsonParser())
-        ).on('done', ({current: object}) => {
-          trackRequest(object);
-        });
-      }
-    },
-
-    onProxyRes(proxyRes, req, _res) {
-      if (req.method === 'POST') {
-        // messages FROM the target
-        Asm.connectTo(
-          pump(proxyRes, jsonParser())
-        ).on('done', ({current: object}) => {
-          trackResponse(object);
-        });
-      }
-    }
-  };
-
-  if (ws) {
-    proxyOpts.onProxyReqWs = (_proxyReq, _req, socket, _options, _head) => {
-      // messages TO the target
-      pump(socket, new WsParser(0, false)).on('frame', ({data: buffer}) => {
-        const object = parseJsonMaybe(buffer.toString());
-        trackRequest(object);
-      });
     };
-
-    // proxyOpts.onOpen = (proxySocket) => {
-    //   // messages FROM the target
-    //   pump(proxySocket, new WsParser(0, true)).on('frame', ({data: buffer}) => {
-    //     const object = parseJsonMaybe(buffer.toString());
-    //     trackResponse(object);
-    //   });
-    // };
   }
 
   const proxy = proxyMiddleware(proxyOpts);

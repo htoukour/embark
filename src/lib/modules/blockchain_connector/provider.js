@@ -53,9 +53,7 @@ class Provider {
     }
     self.web3.setProvider(self.provider);
 
-    console.log('GETTING ACCOUNTS');
     self.web3.eth.getAccounts((err, accounts = []) => {
-      console.log('GOT ACCOUNTS', err, accounts);
       if (err) {
         self.logger.warn('Error while getting the node\'s accounts.', err.message || err);
       }
