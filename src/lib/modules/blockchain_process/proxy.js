@@ -42,6 +42,16 @@ const parseJsonMaybe = (string) => {
   return object;
 };
 
+function modifyPayload(toModifyPayloads, body, accounts) {
+  switch (toModifyPayloads[body.id]) {
+    case METHODS_TO_MODIFY.accounts:
+      body.result = body.result.concat(accounts);
+      break;
+    default:
+  }
+  return body;
+}
+
 exports.serve = async (ipc, host, port, ws, origin, accounts) => {
   const commList = {};
   const receipts = {};
@@ -50,7 +60,6 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
 
   const trackRequest = (req) => {
     if (!req) return;
-    console.error(`reQUEST '${JSON.stringify(req)}'`);
     try {
       if (Object.values(METHODS_TO_MODIFY).includes(req.method)) {
         toModifyPayloads[req.id] = req.method;
@@ -76,7 +85,6 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
 
   const trackResponse = (res) => {
     if (!res) return;
-    console.error(`reSPONSE '${JSON.stringify(res)}'`);
     try {
       if (commList[res.id]) {
         commList[res.id].transactionHash = res.result;
@@ -157,12 +165,7 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
     onProxyRes(proxyRes, req, res) {
       modifyResponse(res, proxyRes, (body) => {
         if (body) {
-          switch (toModifyPayloads[body.id]) {
-            case METHODS_TO_MODIFY.accounts:
-              body.result = body.result.concat(accounts);
-              break;
-            default:
-          }
+          body = modifyPayload(toModifyPayloads, body, accounts);
           trackResponse(body);
         }
         return body;
@@ -181,12 +184,9 @@ exports.serve = async (ipc, host, port, ws, origin, accounts) => {
     proxyOpts.createWsServerTransformStream  = (_req, _proxyReq, _proxyRes) => {
       const parser = new WsParser(0, true);
       parser.on('frame', ({data: buffer}) => {
-        const object = parseJsonMaybe(buffer.toString());
+        let object = parseJsonMaybe(buffer.toString());
         if (object) {
-          switch(toModifyPayloads[object.id]) {
-            case METHODS_TO_MODIFY.accounts: object.result = object.result.concat(accounts); break;
-            default:
-          }
+          object = modifyPayload(toModifyPayloads, object, accounts);
 
           // track the modified response
           trackResponse(object);
